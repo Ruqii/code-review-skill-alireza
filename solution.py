@@ -84,8 +84,10 @@ def run_quality_checker(file_path: str, source: str) -> str:
         Path(tmp_path).unlink(missing_ok=True)
 
 
-def build_system(tool_output: str) -> str:
-    return f"""You must act EXACTLY as Claude would when the following Claude \
+# Split into a STABLE prefix (identical every case -- SKILL.md + reference
+# files -- cached) and a VARYING suffix (this case's live tool output --
+# never cached, since it's different every time).
+SYSTEM_PREFIX = f"""You must act EXACTLY as Claude would when the following Claude \
 Skill is loaded and active. This is a real Skill file (SKILL.md format), \
 shown below along with its Python-specific rule files (rules/universal.md, \
 languages/python.md) that its own "Loading order for every review" section \
@@ -95,9 +97,11 @@ says to always load for a .py file.
 {SKILL_MD}
 === END SKILL.md ===
 
-{REFERENCE_BLOCK}
+{REFERENCE_BLOCK}"""
 
-=== LIVE OUTPUT of this skill's own scripts/code_quality_checker.py, run \
+
+def build_system_suffix(tool_output: str) -> str:
+    return f"""=== LIVE OUTPUT of this skill's own scripts/code_quality_checker.py, run \
 just now against the EXACT code shown below (via `python \
 code_quality_checker.py <file> --language python --json`) ===
 {tool_output}
@@ -125,13 +129,16 @@ def main() -> int:
 
     file_path, source = extract_snippet(question)
     tool_output = run_quality_checker(file_path, source)
-    system = build_system(tool_output)
+    system_suffix = build_system_suffix(tool_output)
 
     client = Anthropic(max_retries=10)
     msg = client.messages.create(
         model=MODEL,
         max_tokens=1024,
-        system=system,
+        system=[
+            {"type": "text", "text": SYSTEM_PREFIX, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": system_suffix},
+        ],
         messages=[{"role": "user", "content": question}],
     )
     answer = next((b.text for b in msg.content if b.type == "text"), "").strip()
