@@ -1,6 +1,6 @@
 name: code-review-skill-alireza
 profile:
-  model: [claude-sonnet-4-6]
+  model: [claude-opus-4-8]
   framework: [alirezarezvani/claude-skills]
 cmd: uv run python solution.py
 timeout: 300
